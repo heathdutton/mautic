@@ -23,6 +23,7 @@ use Mautic\EmailBundle\Swiftmailer\Exception\BatchQueueMaxException;
 use Mautic\EmailBundle\Swiftmailer\Message\MauticMessage;
 use Mautic\EmailBundle\Swiftmailer\Transport\TokenTransportInterface;
 use Mautic\LeadBundle\Entity\Lead;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 /**
  * Class MailHelper.
@@ -1474,7 +1475,11 @@ class MailHelper
     private function addUnsubscribeHeader()
     {
         if (isset($this->idHash)) {
-            $unsubscribeLink                   = $this->factory->getRouter()->generate('mautic_email_unsubscribe', ['idHash' => $this->idHash], true);
+            $unsubscribeLink                   = $this->factory->getRouter()->generate(
+                'mautic_email_unsubscribe',
+                ['idHash' => $this->idHash],
+                UrlGeneratorInterface::ABSOLUTE_URL
+            );
             $this->headers['List-Unsubscribe'] = "<$unsubscribeLink>";
         }
     }
@@ -1515,7 +1520,7 @@ class MailHelper
                 [
                     'idHash' => $this->idHash,
                 ],
-                true
+                UrlGeneratorInterface::ABSOLUTE_URL
             );
         } else {
             $tokens['{tracking_pixel}'] = self::getBlankPixel();
