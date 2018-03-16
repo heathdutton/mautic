@@ -637,9 +637,9 @@ class CampaignController extends AbstractStandardFormController
                 $entity   = $args['entity'];
                 $objectId = $args['objectId'];
                 // Init the date range filter form
-                $dateRangeValues = $this->request->get('daterange', []);
-                $action          = $this->generateUrl('mautic_campaign_action', ['objectAction' => 'view', 'objectId' => $objectId]);
-                $dateRangeForm   = $this->get('form.factory')->create('daterange', $dateRangeValues, ['action' => $action]);
+                $dateRangeValues      = $this->request->get('daterangegroupby', []);
+                $action               = $this->generateUrl('mautic_campaign_action', ['objectAction' => 'view', 'objectId' => $objectId]);
+                $dateRangeGroupByForm = $this->get('form.factory')->create('daterangegroupby', $dateRangeValues, ['action' => $action]);
 
                 /** @var LeadEventLogRepository $eventLogRepo */
                 $eventLogRepo      = $this->getDoctrine()->getManager()->getRepository('MauticCampaignBundle:LeadEventLog');
@@ -671,12 +671,16 @@ class CampaignController extends AbstractStandardFormController
                     $sortedEvents[$event['eventType']][] = $event;
                 }
 
+                $filter = ['campaign_id' => $objectId];
+                if (!empty($dateRangeValues['group_by'])) {
+                    // @todo - Carry over filter in the appropriate manner here.
+                }
                 $stats = $this->getCampaignModel()->getCampaignMetricsLineChartData(
                     null,
-                    new \DateTime($dateRangeForm->get('date_from')->getData()),
-                    new \DateTime($dateRangeForm->get('date_to')->getData()),
+                    new \DateTime($dateRangeGroupByForm->get('date_from')->getData()),
+                    new \DateTime($dateRangeGroupByForm->get('date_to')->getData()),
                     null,
-                    ['campaign_id' => $objectId]
+                    $filter
                 );
 
                 $session = $this->get('session');
@@ -694,7 +698,7 @@ class CampaignController extends AbstractStandardFormController
                         'events'          => $sortedEvents,
                         'eventSettings'   => $this->getCampaignModel()->getEvents(),
                         'sources'         => $this->getCampaignModel()->getLeadSources($entity),
-                        'dateRangeForm'   => $dateRangeForm->createView(),
+                        'dateRangeGroupByForm'   => $dateRangeGroupByForm->createView(),
                         'campaignSources' => $this->campaignSources,
                         'campaignEvents'  => $events,
                         'campaignLeads'   => $this->forward(

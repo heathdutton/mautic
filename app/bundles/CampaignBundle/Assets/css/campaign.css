@@ -277,3 +277,15 @@
 .list-campaign-action .campaign-event-logic {
     color: #9babeb;
 }
+
+form[name="daterangegroupby"] .chosen-container {
+    display: table-cell;
+    width: auto !important;
+}
+form[name="daterangegroupby"] .chosen-container a {
+    border-right: 0;
+}
+form[name="daterangegroupby"] #daterangegroupby_date_to,
+form[name="daterangegroupby"] #daterangegroupby_date_from {
+    max-width: 115px;
+}

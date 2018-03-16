@@ -184,6 +184,11 @@ return [
                 'arguments' => 'mautic.factory',
                 'alias'     => 'campaign_list',
             ],
+            'mautic.campaign.type.daterangegroupby' => [
+                'class'     => 'Mautic\CampaignBundle\Form\Type\DateRangeGroupByType',
+                'arguments' => 'mautic.factory',
+                'alias'     => 'daterangegroupby',
+            ],
             'mautic.campaign.type.trigger.leadchange' => [
                 'class' => 'Mautic\CampaignBundle\Form\Type\CampaignEventLeadChangeType',
                 'alias' => 'campaignevent_leadchange',

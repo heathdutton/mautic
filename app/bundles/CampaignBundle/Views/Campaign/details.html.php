@@ -136,8 +136,8 @@ switch (true) {
                                 </div>
                                 <div class="col-md-9 va-m">
                                     <?php echo $view->render(
-                                        'MauticCoreBundle:Helper:graph_dateselect.html.php',
-                                        ['dateRangeForm' => $dateRangeForm, 'class' => 'pull-right']
+                                        'MauticCampaignBundle:Helper:graph_daterangegroupby.html.php',
+                                        ['dateRangeGroupByForm' => $dateRangeGroupByForm, 'class' => 'pull-right']
                                     ); ?>
                                 </div>
                             </div>

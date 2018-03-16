@@ -26,7 +26,6 @@ use Mautic\CoreBundle\Model\FormModel as CommonFormModel;
 use Mautic\FormBundle\Entity\Form;
 use Mautic\FormBundle\Model\FormModel;
 use Mautic\LeadBundle\Entity\Lead;
-use Mautic\LeadBundle\Entity\LeadList;
 use Mautic\LeadBundle\Model\LeadModel;
 use Mautic\LeadBundle\Model\ListModel;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -1262,7 +1261,7 @@ class CampaignModel extends CommonFormModel
     }
 
     /**
-     * Get line chart data of hits.
+     * Get line chart data of campaign events.
      *
      * @param string    $unit       {@link php.net/manual/en/function.date.php#refsect1-function.date-parameters}
      * @param \DateTime $dateFrom
@@ -1278,7 +1277,10 @@ class CampaignModel extends CommonFormModel
         $chart  = new LineChart($unit, $dateFrom, $dateTo, $dateFormat);
         $query  = new ChartQuery($this->em->getConnection(), $dateFrom, $dateTo);
 
-        $contacts = $query->fetchTimeData('campaign_leads', 'date_added', $filter);
+        $chartQuery = $query->prepareTimeDataQuery('campaign_leads', 'date_added', $filter);
+        $contacts = $query->loadAndBuildTimeData($chartQuery);
+
+        // $contacts = $query->fetchTimeData('campaign_leads', 'date_added', $filter);
         $chart->setDataset($this->translator->trans('mautic.campaign.campaign.leads'), $contacts);
 
         if (isset($filter['campaign_id'])) {
