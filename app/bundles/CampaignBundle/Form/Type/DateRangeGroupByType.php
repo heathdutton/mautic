@@ -19,7 +19,6 @@ use Symfony\Component\Form\FormBuilderInterface;
  */
 class DateRangeGroupByType extends DateRangeType
 {
-
     /**
      * @param FormBuilderInterface $builder
      * @param array                $options

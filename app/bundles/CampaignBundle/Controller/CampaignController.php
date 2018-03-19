@@ -490,7 +490,7 @@ class CampaignController extends AbstractStandardFormController
                 $listFilters['filters']['groups']['mautic.campaign.leadsource.'.$type]['values'] = $typeFilters;
 
                 foreach ($typeFilters as $fltr) {
-                    if ($type == 'list') {
+                    if ('list' == $type) {
                         $listIds[] = (int) $fltr;
                     } else {
                         $formIds[] = (int) $fltr;
@@ -693,15 +693,15 @@ class CampaignController extends AbstractStandardFormController
                 $args['viewParameters'] = array_merge(
                     $args['viewParameters'],
                     [
-                        'campaign'        => $entity,
-                        'stats'           => $stats,
-                        'events'          => $sortedEvents,
-                        'eventSettings'   => $this->getCampaignModel()->getEvents(),
-                        'sources'         => $this->getCampaignModel()->getLeadSources($entity),
+                        'campaign'               => $entity,
+                        'stats'                  => $stats,
+                        'events'                 => $sortedEvents,
+                        'eventSettings'          => $this->getCampaignModel()->getEvents(),
+                        'sources'                => $this->getCampaignModel()->getLeadSources($entity),
                         'dateRangeGroupByForm'   => $dateRangeGroupByForm->createView(),
-                        'campaignSources' => $this->campaignSources,
-                        'campaignEvents'  => $events,
-                        'campaignLeads'   => $this->forward(
+                        'campaignSources'        => $this->campaignSources,
+                        'campaignEvents'         => $events,
+                        'campaignLeads'          => $this->forward(
                             'MauticCampaignBundle:Campaign:contacts',
                             [
                                 'objectId'   => $entity->getId(),
@@ -764,7 +764,7 @@ class CampaignController extends AbstractStandardFormController
             switch ($event['triggerMode']) {
                 case 'interval':
                     $label = $translator->trans(
-                        'mautic.campaign.connection.trigger.interval.label'.($event['decisionPath'] == 'no' ? '_inaction' : ''),
+                        'mautic.campaign.connection.trigger.interval.label'.('no' == $event['decisionPath'] ? '_inaction' : ''),
                         [
                             '%number%' => $event['triggerInterval'],
                             '%unit%'   => $translator->transChoice(
@@ -776,7 +776,7 @@ class CampaignController extends AbstractStandardFormController
                     break;
                 case 'date':
                     $label = $translator->trans(
-                        'mautic.campaign.connection.trigger.date.label'.($event['decisionPath'] == 'no' ? '_inaction' : ''),
+                        'mautic.campaign.connection.trigger.date.label'.('no' == $event['decisionPath'] ? '_inaction' : ''),
                         [
                             '%full%' => $dateHelper->toFull($event['triggerDate']),
                             '%time%' => $dateHelper->toTime($event['triggerDate']),
