@@ -1491,7 +1491,7 @@ class EventModel extends CommonFormModel
                                 continue;
                             }
 
-                            if ($max && ($totalEventCount + count($nonActionEvents)) >= $max) {
+                            if ($max && ($totalEventCount + count($nonActionEvents)) >= $max && !$thread) {
                                 // Hit the max or will hit the max while mid-process for the lead
                                 if ($output && isset($progress)) {
                                     $progress->finish();
