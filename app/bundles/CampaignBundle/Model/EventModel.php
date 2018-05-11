@@ -460,15 +460,17 @@ class EventModel extends CommonFormModel
     /**
      * Trigger the root level action(s) in campaign(s).
      *
-     * @param Campaign        $campaign
-     * @param                 $totalEventCount
-     * @param int             $limit
-     * @param bool            $max
-     * @param OutputInterface $output
-     * @param int|null        $leadId
-     * @param bool|false      $returnCounts    If true, returns array of counters
+     * @param Campaign             $campaign
+     * @param                      $totalEventCount
+     * @param int                  $limit
+     * @param bool                 $max
+     * @param OutputInterface|null $output
+     * @param null                 $leadId
+     * @param bool                 $returnCounts
+     * @param int                  $threads
      *
-     * @return int
+     * @return array|int
+     * @throws \Doctrine\ORM\ORMException
      */
     public function triggerStartingEvents(
         Campaign $campaign,
@@ -477,7 +479,8 @@ class EventModel extends CommonFormModel
         $max = false,
         OutputInterface $output = null,
         $leadId = null,
-        $returnCounts = false
+        $returnCounts = false,
+        $threads = 1
     ) {
         defined('MAUTIC_CAMPAIGN_SYSTEM_TRIGGERED') or define('MAUTIC_CAMPAIGN_SYSTEM_TRIGGERED', 1);
 
@@ -599,6 +602,7 @@ class EventModel extends CommonFormModel
                     'withChannelRules'   => true,
                 ]
             );
+            unset($campaignLeads);
 
             $this->logger->debug('CAMPAIGN: Processing the following contacts: '.implode(', ', array_keys($leads)));
 
@@ -609,10 +613,63 @@ class EventModel extends CommonFormModel
                 break;
             }
 
-            /** @var \Mautic\LeadBundle\Entity\Lead $lead */
+            $thread    = 0;
+            $parentPId = getmypid();
+            $childPIds = [];
+            if ($threads > 1) {
+                if (function_exists('pcntl_fork')) {
+                    $this->logger->debug('CAMPAIGN: Will run '.$threads.' concurrent threads.');
+                } else {
+                    $this->logger->warn('CAMPAIGN: Will not be able to run concurrent threads without PCNTL. ');
+                    $threads = 1;
+                }
+            } else {
+                $threads = 1;
+            }
+
             $leadDebugCounter = 1;
+            /** @var \Mautic\LeadBundle\Entity\Lead $lead */
             foreach ($leads as $lead) {
-                $this->logger->debug('CAMPAIGN: Current Lead ID# '.$lead->getId().'; #'.$leadDebugCounter.' in batch #'.$batchDebugCounter);
+
+                // Parent: Check if it is time to create a child thread.
+                if ($threads > 1 && getmygid() === $parentPId) {
+                    if (count($childPIds) >= $threads) {
+                        // Parent: Too many children, wait for one to finish it's task.
+                        $childPId  = pcntl_waitpid(-1, $childStatus);
+                        $childShm  = shmop_open($childPId, 'a', 0, 0);
+                        $childData = json_decode(shmop_read($childShm, 0, shmop_size($childShm)));
+                        shmop_delete($childShm);
+                        if ($childData) {
+                            $sleepBatchCount     += isset($childData['sleepBatchCount']) ? $childData['sleepBatchCount'] : 0;
+                            $rootEvaluatedCount  += isset($childData['evaluated']) ? $childData['evaluated'] : 0;
+                            $rootExecutedCount   += isset($childData['executed']) ? $childData['executed'] : 0;
+                            $evaluatedEventCount += isset($childData['totalEvaluated']) ? $childData['totalEvaluated'] : 0;
+                            $executedEventCount  += isset($childData['totalExecuted']) ? $childData['totalExecuted'] : 0;
+                        }
+                        if (($pidKey = array_search($childPId, $childPIds)) !== false) {
+                            unset($childPIds[$pidKey]);
+                        }
+                    }
+                    // Parent: Time to create a child thread for processing this lead.
+                    $thread      = count($childPIds) + 1;
+                    $childPIds[] = pcntl_fork();
+                    if (getmygid() === $parentPId) {
+                        // Parent: Let the child continue working with this lead on it's own.
+                        continue;
+                    } else {
+                        // Child: Does not need this data, reduce memory consumption.
+                        unset($leads);
+                        // Child: Reset counts to just the subset for this child.
+                        $rootEvaluatedCount  = 0;
+                        $rootExecutedCount   = 0;
+                        $evaluatedEventCount = 0;
+                        $executedEventCount  = 0;
+                    }
+                }
+                $this->logger->debug(
+                    'CAMPAIGN: Current Lead ID# '.$lead->getId(
+                    ).'; #'.$leadDebugCounter.' in batch #'.$batchDebugCounter.($thread ? '; thread #'.$thread : '')
+                );
 
                 if ($rootEvaluatedCount >= $maxCount || ($max && ($rootEvaluatedCount + $rootEventCount) >= $max)) {
                     // Hit the max or will hit the max mid-progress for a lead
@@ -628,7 +685,7 @@ class EventModel extends CommonFormModel
                 foreach ($events as $event) {
                     ++$rootEvaluatedCount;
 
-                    if ($sleepBatchCount == $limit) {
+                    if ($sleepBatchCount >= $limit) {
                         // Keep CPU down
                         $this->batchSleep();
                         $sleepBatchCount = 0;
@@ -723,7 +780,7 @@ class EventModel extends CommonFormModel
 
                     unset($event);
 
-                    if ($output && isset($progress) && $rootEvaluatedCount < $maxCount) {
+                    if ($output && isset($progress) && $rootEvaluatedCount < $maxCount && !$thread) {
                         $progress->setProgress($rootEvaluatedCount);
                     }
                 }
@@ -733,15 +790,56 @@ class EventModel extends CommonFormModel
                 unset($lead);
 
                 ++$leadDebugCounter;
+
+                // Child: Only process one lead, then stop.
+                if ($thread) {
+                    break;
+                }
             }
 
             $this->em->clear('Mautic\LeadBundle\Entity\Lead');
             $this->em->clear('Mautic\UserBundle\Entity\User');
 
-            unset($leads, $campaignLeads);
+            unset($leads);
 
             // Free some memory
             gc_collect_cycles();
+
+            // Child: Report results of lead processing to the parent, then shut down.
+            if ($thread) {
+                $childData = json_encode([
+                    'sleepBatchCount' => $sleepBatchCount,
+                    'evaluated'       => $rootEvaluatedCount,
+                    'executed'        => $rootExecutedCount,
+                    'totalEvaluated'  => $evaluatedEventCount,
+                    'totalExecuted'   => $executedEventCount,
+                ]);
+                $childShm = shmop_open(getmypid(), 'c', 0644, strlen($childData));
+                if (!$childShm) {
+                    $this->logger->error('CAMPAIGN: Unable to create a shared memory segment');
+                } elseif (shmop_write($childShm, $childData, 0) != strlen($childData)) {
+                    $this->logger->error('CAMPAIGN: Unable to write to shared memory');
+                }
+                exit(0);
+            } else {
+                // Parent: Wait for all children to complete their tasks.
+                while (count($childPIds)) {
+                    $childPId  = pcntl_waitpid(-1, $childStatus);
+                    $childShm  = shmop_open($childPId, 'a', 0, 0);
+                    $childData = json_decode(shmop_read($childShm, 0, shmop_size($childShm)));
+                    shmop_delete($childShm);
+                    if ($childData) {
+                        $sleepBatchCount     += isset($childData['sleepBatchCount']) ? $childData['sleepBatchCount'] : 0;
+                        $rootEvaluatedCount  += isset($childData['evaluated']) ? $childData['evaluated'] : 0;
+                        $rootExecutedCount   += isset($childData['executed']) ? $childData['executed'] : 0;
+                        $evaluatedEventCount += isset($childData['totalEvaluated']) ? $childData['totalEvaluated'] : 0;
+                        $executedEventCount  += isset($childData['totalExecuted']) ? $childData['totalExecuted'] : 0;
+                    }
+                    if (($pidKey = array_search($childPId, $childPIds)) !== false) {
+                        unset($childPIds[$pidKey]);
+                    }
+                }
+            }
 
             $this->triggerConditions($campaign, $evaluatedEventCount, $executedEventCount, $totalEventCount);
 
@@ -766,16 +864,15 @@ class EventModel extends CommonFormModel
     }
 
     /**
-     * @param Campaign        $campaign
-     * @param                 $totalEventCount
-     * @param int             $limit
-     * @param bool            $max
-     * @param OutputInterface $output
-     * @param bool|false      $returnCounts    If true, returns array of counters
+     * @param                      $campaign
+     * @param                      $totalEventCount
+     * @param int                  $limit
+     * @param bool                 $max
+     * @param OutputInterface|null $output
+     * @param bool|false           $returnCounts    If true, returns array of counters
+     * @param int                  $threads
      *
-     * @return int
-     *
-     * @throws \Doctrine\ORM\ORMException
+     * @return array|int
      */
     public function triggerScheduledEvents(
         $campaign,
@@ -783,7 +880,8 @@ class EventModel extends CommonFormModel
         $limit = 100,
         $max = false,
         OutputInterface $output = null,
-        $returnCounts = false
+        $returnCounts = false,
+        $threads = 1
     ) {
         defined('MAUTIC_CAMPAIGN_SYSTEM_TRIGGERED') or define('MAUTIC_CAMPAIGN_SYSTEM_TRIGGERED', 1);
 
@@ -886,6 +984,20 @@ class EventModel extends CommonFormModel
                 break;
             }
 
+            $thread    = 0;
+            $parentPId = getmypid();
+            $childPIds = [];
+            if ($threads > 1) {
+                if (function_exists('pcntl_fork')) {
+                    $this->logger->debug('CAMPAIGN: Will run '.$threads.' concurrent threads.');
+                } else {
+                    $this->logger->warn('CAMPAIGN: Will not be able to run concurrent threads without PCNTL. ');
+                    $threads = 1;
+                }
+            } else {
+                $threads = 1;
+            }
+
             $this->logger->debug('CAMPAIGN: Processing the following contacts '.implode(', ', array_keys($events)));
             $leadDebugCounter = 1;
             foreach ($events as $leadId => $leadEvents) {
@@ -898,7 +1010,46 @@ class EventModel extends CommonFormModel
                 /** @var \Mautic\LeadBundle\Entity\Lead $lead */
                 $lead = $leads[$leadId];
 
-                $this->logger->debug('CAMPAIGN: Current Lead ID# '.$lead->getId().'; #'.$leadDebugCounter.' in batch #'.$batchDebugCounter);
+                // Parent: Check if it is time to create a child thread.
+                if ($threads > 1 && getmygid() === $parentPId) {
+                    if (count($childPIds) >= $threads) {
+                        // Parent: Too many children, wait for one to finish it's task.
+                        $childPId  = pcntl_waitpid(-1, $childStatus);
+                        $childShm  = shmop_open($childPId, 'a', 0, 0);
+                        $childData = json_decode(shmop_read($childShm, 0, shmop_size($childShm)));
+                        shmop_delete($childShm);
+                        if ($childData) {
+                            $sleepBatchCount         += isset($childData['sleepBatchCount']) ? $childData['sleepBatchCount'] : 0;
+                            $scheduledEvaluatedCount += isset($childData['evaluated']) ? $childData['evaluated'] : 0;
+                            $scheduledExecutedCount  += isset($childData['executed']) ? $childData['executed'] : 0;
+                            $evaluatedEventCount     += isset($childData['totalEvaluated']) ? $childData['totalEvaluated'] : 0;
+                            $executedEventCount      += isset($childData['totalExecuted']) ? $childData['totalExecuted'] : 0;
+                        }
+                        if (($pidKey = array_search($childPId, $childPIds)) !== false) {
+                            unset($childPIds[$pidKey]);
+                        }
+                    }
+                    // Parent: Time to create a child thread for processing this lead.
+                    $thread      = count($childPIds) + 1;
+                    $childPIds[] = pcntl_fork();
+                    if (getmygid() === $parentPId) {
+                        // Parent: Let the child continue working with this lead on it's own.
+                        continue;
+                    } else {
+                        // Child: Does not need this data, reduce memory consumption.
+                        unset($events);
+                        // Child: Reset counts to just the subset for this child.
+                        $scheduledEvaluatedCount = 0;
+                        $scheduledExecutedCount  = 0;
+                        $evaluatedEventCount     = 0;
+                        $executedEventCount      = 0;
+                    }
+                }
+
+                $this->logger->debug(
+                    'CAMPAIGN: Current Lead ID# '.$lead->getId(
+                    ).'; #'.$leadDebugCounter.' in batch #'.$batchDebugCounter.($thread ? '; thread #'.$thread : '')
+                );
 
                 // Set lead in case this is triggered by the system
                 $this->leadModel->setSystemCurrentLead($lead);
@@ -908,7 +1059,7 @@ class EventModel extends CommonFormModel
                 foreach ($leadEvents as $log) {
                     ++$scheduledEvaluatedCount;
 
-                    if ($sleepBatchCount == $limit) {
+                    if ($sleepBatchCount >= $limit) {
                         // Keep CPU down
                         $this->batchSleep();
                         $sleepBatchCount = 0;
@@ -946,7 +1097,7 @@ class EventModel extends CommonFormModel
                         }
                     }
 
-                    if ($max && $totalEventCount >= $max) {
+                    if ($max && $totalEventCount >= $max && !$thread) {
                         unset($campaignEvents, $event, $leads, $eventSettings);
 
                         if ($output && isset($progress)) {
@@ -985,6 +1136,42 @@ class EventModel extends CommonFormModel
             // Free some memory
             gc_collect_cycles();
 
+            // Child: Report results of lead processing to the parent, then shut down.
+            if ($thread) {
+                $childData = json_encode([
+                    'sleepBatchCount' => $sleepBatchCount,
+                    'evaluated'       => $scheduledEvaluatedCount,
+                    'executed'        => $scheduledExecutedCount,
+                    'totalEvaluated'  => $evaluatedEventCount,
+                    'totalExecuted'   => $executedEventCount,
+                ]);
+                $childShm = shmop_open(getmypid(), 'c', 0644, strlen($childData));
+                if (!$childShm) {
+                    $this->logger->error('CAMPAIGN: Unable to create a shared memory segment');
+                } elseif (shmop_write($childShm, $childData, 0) != strlen($childData)) {
+                    $this->logger->error('CAMPAIGN: Unable to write to shared memory');
+                }
+                exit(0);
+            } else {
+                // Parent: Wait for all children to complete their tasks.
+                while (count($childPIds)) {
+                    $childPId  = pcntl_waitpid(-1, $childStatus);
+                    $childShm  = shmop_open($childPId, 'a', 0, 0);
+                    $childData = json_decode(shmop_read($childShm, 0, shmop_size($childShm)));
+                    shmop_delete($childShm);
+                    if ($childData) {
+                        $sleepBatchCount         += isset($childData['sleepBatchCount']) ? $childData['sleepBatchCount'] : 0;
+                        $scheduledEvaluatedCount += isset($childData['evaluated']) ? $childData['evaluated'] : 0;
+                        $scheduledExecutedCount  += isset($childData['executed']) ? $childData['executed'] : 0;
+                        $evaluatedEventCount     += isset($childData['totalEvaluated']) ? $childData['totalEvaluated'] : 0;
+                        $executedEventCount      += isset($childData['totalExecuted']) ? $childData['totalExecuted'] : 0;
+                    }
+                    if (($pidKey = array_search($childPId, $childPIds)) !== false) {
+                        unset($childPIds[$pidKey]);
+                    }
+                }
+            }
+
             ++$batchDebugCounter;
 
             $this->triggerConditions($campaign, $evaluatedEventCount, $executedEventCount, $totalEventCount);
@@ -1016,8 +1203,10 @@ class EventModel extends CommonFormModel
      * @param bool            $max
      * @param OutputInterface $output
      * @param bool|false      $returnCounts    If true, returns array of counters
+     * @param int             $threads
      *
      * @return int
+     * @throws \Doctrine\ORM\ORMException
      */
     public function triggerNegativeEvents(
         $campaign,
@@ -1025,7 +1214,8 @@ class EventModel extends CommonFormModel
         $limit = 100,
         $max = false,
         OutputInterface $output = null,
-        $returnCounts = false
+        $returnCounts = false,
+        $threads = 1
     ) {
         defined('MAUTIC_CAMPAIGN_SYSTEM_TRIGGERED') or define('MAUTIC_CAMPAIGN_SYSTEM_TRIGGERED', 1);
 
@@ -1172,6 +1362,7 @@ class EventModel extends CommonFormModel
                             'withChannelRules'   => true,
                         ]
                     );
+                    unset($applicableLeads);
 
                     if (!count($leads)) {
                         // Just a precaution in case non-existent leads are lingering in the campaign leads table
@@ -1182,15 +1373,69 @@ class EventModel extends CommonFormModel
 
                     // Loop over the non-actions and determine if it has been processed for this lead
 
+                    $thread    = 0;
+                    $parentPId = getmypid();
+                    $childPIds = [];
+                    if ($threads > 1) {
+                        if (function_exists('pcntl_fork')) {
+                            $this->logger->debug('CAMPAIGN: Will run '.$threads.' concurrent threads.');
+                        } else {
+                            $this->logger->warn('CAMPAIGN: Will not be able to run concurrent threads without PCNTL. ');
+                            $threads = 1;
+                        }
+                    } else {
+                        $threads = 1;
+                    }
+
                     $leadDebugCounter = 1;
                     /** @var \Mautic\LeadBundle\Entity\Lead $lead */
                     foreach ($leads as $lead) {
+
+                        // Parent: Check if it is time to create a child thread.
+                        if ($threads > 1 && getmygid() === $parentPId) {
+                            if (count($childPIds) >= $threads) {
+                                // Parent: Too many children, wait for one to finish it's task.
+                                $childPId  = pcntl_waitpid(-1, $childStatus);
+                                $childShm  = shmop_open($childPId, 'a', 0, 0);
+                                $childData = json_decode(shmop_read($childShm, 0, shmop_size($childShm)));
+                                shmop_delete($childShm);
+                                if ($childData) {
+                                    $sleepBatchCount        += isset($childData['sleepBatchCount']) ? $childData['sleepBatchCount'] : 0;
+                                    $negativeEvaluatedCount += isset($childData['evaluated']) ? $childData['evaluated'] : 0;
+                                    $negativeExecutedCount  += isset($childData['executed']) ? $childData['executed'] : 0;
+                                    $evaluatedEventCount    += isset($childData['totalEvaluated']) ? $childData['totalEvaluated'] : 0;
+                                    $executedEventCount     += isset($childData['totalExecuted']) ? $childData['totalExecuted'] : 0;
+                                }
+                                if (($pidKey = array_search($childPId, $childPIds)) !== false) {
+                                    unset($childPIds[$pidKey]);
+                                }
+                            }
+                            // Parent: Time to create a child thread for processing this lead.
+                            $thread      = count($childPIds) + 1;
+                            $childPIds[] = pcntl_fork();
+                            if (getmygid() === $parentPId) {
+                                // Parent: Let the child continue working with this lead on it's own.
+                                continue;
+                            } else {
+                                // Child: Does not need this data, reduce memory consumption.
+                                unset($leads);
+                                // Child: Reset counts to just the subset for this child.
+                                $negativeEvaluatedCount = 0;
+                                $negativeExecutedCount  = 0;
+                                $evaluatedEventCount    = 0;
+                                $executedEventCount     = 0;
+                            }
+                        }
+
                         ++$negativeEvaluatedCount;
 
                         // Set lead for listeners
                         $this->leadModel->setSystemCurrentLead($lead);
 
-                        $this->logger->debug('CAMPAIGN: contact ID #'.$lead->getId().'; #'.$leadDebugCounter.' in batch #'.$batchDebugCounter);
+                        $this->logger->debug(
+                            'CAMPAIGN: contact ID #'.$lead->getId(
+                            ).'; #'.$leadDebugCounter.' in batch #'.$batchDebugCounter.($thread ? '; thread #'.$thread : '')
+                        );
 
                         // Prevent path if lead has already gone down this path
                         if (!isset($leadLog[$lead->getId()]) || !array_key_exists($parentId, $leadLog[$lead->getId()])) {
@@ -1205,7 +1450,7 @@ class EventModel extends CommonFormModel
                             $eventTiming   = [];
                             $executeAction = false;
                             foreach ($events as $id => $e) {
-                                if ($sleepBatchCount == $limit) {
+                                if ($sleepBatchCount >= $limit) {
                                     // Keep CPU down
                                     $this->batchSleep();
                                     $sleepBatchCount = 0;
@@ -1332,6 +1577,44 @@ class EventModel extends CommonFormModel
                         // Save RAM
                         $this->em->detach($lead);
                         unset($lead);
+
+                        // Child: Report results of lead processing to the parent, then shut down.
+                        if ($thread) {
+                            $childData = json_encode(
+                                [
+                                    'sleepBatchCount' => $sleepBatchCount,
+                                    'evaluated'       => $negativeEvaluatedCount,
+                                    'executed'        => $negativeExecutedCount,
+                                    'totalEvaluated'  => $evaluatedEventCount,
+                                    'totalExecuted'   => $executedEventCount,
+                                ]
+                            );
+                            $childShm  = shmop_open(getmypid(), 'c', 0644, strlen($childData));
+                            if (!$childShm) {
+                                $this->logger->error('CAMPAIGN: Unable to create a shared memory segment');
+                            } elseif (shmop_write($childShm, $childData, 0) != strlen($childData)) {
+                                $this->logger->error('CAMPAIGN: Unable to write to shared memory');
+                            }
+                            exit(0);
+                        }
+                    }
+
+                    // Parent: Wait for all children to complete their tasks.
+                    while (count($childPIds)) {
+                        $childPId  = pcntl_waitpid(-1, $childStatus);
+                        $childShm  = shmop_open($childPId, 'a', 0, 0);
+                        $childData = json_decode(shmop_read($childShm, 0, shmop_size($childShm)));
+                        shmop_delete($childShm);
+                        if ($childData) {
+                            $sleepBatchCount        += isset($childData['sleepBatchCount']) ? $childData['sleepBatchCount'] : 0;
+                            $negativeEvaluatedCount += isset($childData['evaluated']) ? $childData['evaluated'] : 0;
+                            $negativeExecutedCount  += isset($childData['executed']) ? $childData['executed'] : 0;
+                            $evaluatedEventCount    += isset($childData['totalEvaluated']) ? $childData['totalEvaluated'] : 0;
+                            $executedEventCount     += isset($childData['totalExecuted']) ? $childData['totalExecuted'] : 0;
+                        }
+                        if (($pidKey = array_search($childPId, $childPIds)) !== false) {
+                            unset($childPIds[$pidKey]);
+                        }
                     }
                 }
 
