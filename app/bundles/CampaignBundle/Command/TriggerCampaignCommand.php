@@ -80,6 +80,7 @@ class TriggerCampaignCommand extends ModeratedCommand
         $batch            = $input->getOption('batch-limit');
         $max              = $input->getOption('max-events');
         $threads          = $input->getOption('threads');
+        $force            = $input->getOption('force');
 
         if (!$this->checkRunStatus($input, $output, $id)) {
             return 0;
@@ -100,7 +101,7 @@ class TriggerCampaignCommand extends ModeratedCommand
                 if (!$negativeOnly && !$scheduleOnly) {
                     //trigger starting action events for newly added contacts
                     $output->writeln('<comment>'.$translator->trans('mautic.campaign.trigger.starting').'</comment>');
-                    $processed = $model->triggerStartingEvents($campaign, $totalProcessed, $batch, $max, $output, $threads);
+                    $processed = $model->triggerStartingEvents($campaign, $totalProcessed, $batch, $max, $output, $threads, $force);
                     $output->writeln(
                         '<comment>'.$translator->trans('mautic.campaign.trigger.events_executed', ['%events%' => $processed]).'</comment>'."\n"
                     );

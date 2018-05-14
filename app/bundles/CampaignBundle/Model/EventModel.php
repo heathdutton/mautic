@@ -468,6 +468,7 @@ class EventModel extends CommonFormModel
      * @param null                 $leadId
      * @param bool                 $returnCounts
      * @param int                  $threads
+     * @param bool                 $force
      *
      * @return array|int
      * @throws \Doctrine\ORM\ORMException
@@ -480,7 +481,8 @@ class EventModel extends CommonFormModel
         OutputInterface $output = null,
         $leadId = null,
         $returnCounts = false,
-        $threads = 1
+        $threads = 1,
+        $force = false
     ) {
         defined('MAUTIC_CAMPAIGN_SYSTEM_TRIGGERED') or define('MAUTIC_CAMPAIGN_SYSTEM_TRIGGERED', 1);
 
@@ -740,7 +742,8 @@ class EventModel extends CommonFormModel
                                             false,
                                             $evaluatedEventCount,
                                             $executedEventCount,
-                                            $totalEventCount
+                                            $totalEventCount,
+                                            $force
                                         )
                                         && !$decisionLogged
                                     ) {
@@ -771,7 +774,8 @@ class EventModel extends CommonFormModel
                             false,
                             $evaluatedEventCount,
                             $executedEventCount,
-                            $totalEventCount
+                            $totalEventCount,
+                            $force
                         )
                         ) {
                             ++$rootExecutedCount;
@@ -869,10 +873,12 @@ class EventModel extends CommonFormModel
      * @param int                  $limit
      * @param bool                 $max
      * @param OutputInterface|null $output
-     * @param bool|false           $returnCounts    If true, returns array of counters
+     * @param bool                 $returnCounts
      * @param int                  $threads
+     * @param bool                 $force
      *
      * @return array|int
+     * @throws \Doctrine\ORM\ORMException
      */
     public function triggerScheduledEvents(
         $campaign,
@@ -881,7 +887,8 @@ class EventModel extends CommonFormModel
         $max = false,
         OutputInterface $output = null,
         $returnCounts = false,
-        $threads = 1
+        $threads = 1,
+        $force = false
     ) {
         defined('MAUTIC_CAMPAIGN_SYSTEM_TRIGGERED') or define('MAUTIC_CAMPAIGN_SYSTEM_TRIGGERED', 1);
 
@@ -1090,7 +1097,8 @@ class EventModel extends CommonFormModel
                             $log['id'],
                             $evaluatedEventCount,
                             $executedEventCount,
-                            $totalEventCount
+                            $totalEventCount,
+                            $force
                         )
                         ) {
                             ++$scheduledExecutedCount;
@@ -1204,6 +1212,7 @@ class EventModel extends CommonFormModel
      * @param OutputInterface $output
      * @param bool|false      $returnCounts    If true, returns array of counters
      * @param int             $threads
+     * @param bool            $force
      *
      * @return int
      * @throws \Doctrine\ORM\ORMException
@@ -1215,7 +1224,8 @@ class EventModel extends CommonFormModel
         $max = false,
         OutputInterface $output = null,
         $returnCounts = false,
-        $threads = 1
+        $threads = 1,
+        $force = false
     ) {
         defined('MAUTIC_CAMPAIGN_SYSTEM_TRIGGERED') or define('MAUTIC_CAMPAIGN_SYSTEM_TRIGGERED', 1);
 
@@ -1543,7 +1553,8 @@ class EventModel extends CommonFormModel
                                     false,
                                     $evaluatedEventCount,
                                     $executedEventCount,
-                                    $totalEventCount
+                                    $totalEventCount,
+                                    $force
                                 )
                                 ) {
                                     if (!$decisionLogged) {
@@ -1754,7 +1765,8 @@ class EventModel extends CommonFormModel
                                     false,
                                     $evaluatedEventCount,
                                     $executedEventCount,
-                                    $totalEventCount
+                                    $totalEventCount,
+                                    $force
                                 );
 
                                 if ($sleepBatchCount == $limit) {
@@ -1794,8 +1806,10 @@ class EventModel extends CommonFormModel
      * @param int            $evaluatedEventCount The number of events evaluated for the current method (kickoff, negative/inaction, scheduled)
      * @param int            $executedEventCount  The number of events successfully executed for the current method
      * @param int            $totalEventCount     The total number of events across all methods
+     * @param bool           $force               Indicate if force was used and we should watch out for concurrency.
      *
      * @return bool
+     * @throws \Doctrine\ORM\ORMException
      */
     public function executeEvent(
         $event,
@@ -1808,7 +1822,8 @@ class EventModel extends CommonFormModel
         $logExists = false,
         &$evaluatedEventCount = 0,
         &$executedEventCount = 0,
-        &$totalEventCount = 0
+        &$totalEventCount = 0,
+        $force = false
     ) {
         ++$evaluatedEventCount;
         ++$totalEventCount;
@@ -1885,6 +1900,22 @@ class EventModel extends CommonFormModel
         }
 
         if (empty($log)) {
+            if ($force && false === $logExists) {
+                // If "force" is enabled, we need to make sure another process hasn't already picked up this work.
+                $log = $logRepo->findOneBy(
+                    [
+                        'lead'  => $lead->getId(),
+                        'event' => $event['id'],
+                    ]
+                );
+                if ($log) {
+                    $this->logger->debug(
+                        'CAMPAIGN: Already processed event '.ucfirst($event['eventType']).' ID# '.$event['id'].' for contact ID# '.$lead->getId()
+                    );
+
+                    return false;
+                }
+            }
             $log = $this->getLogEntity($event['id'], $campaign, $lead, null, !defined('MAUTIC_CAMPAIGN_NOT_SYSTEM_TRIGGERED'));
         }
 
