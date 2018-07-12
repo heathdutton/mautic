@@ -120,7 +120,7 @@ class AjaxController extends CommonAjaxController
                             'id'    => $r['id'],
                         ];
                     }
-                } elseif (in_array($leadField, ['hit_url', 'referer', 'url_title', 'source', 'source_id'])) {
+                } elseif (in_array($leadField, ['hit_url', 'referer', 'url_title', 'source', 'source_id', 'utm_campaign', 'utm_content', 'utm_medium', 'utm_source', 'utm_term'])) {
                     $dataArray[] = [
                         'value' => '',
                     ];
