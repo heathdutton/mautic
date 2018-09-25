@@ -270,6 +270,9 @@ return [
                     'mautic.helper.ip_lookup',
                 ],
             ],
+            'mautic.campaign.model.summary' => [
+                'class'     => 'Mautic\CampaignBundle\Model\SummaryModel',
+            ],
         ],
         'repositories' => [
             'mautic.campaign.repository.campaign' => [
@@ -298,6 +301,13 @@ return [
                 'factory'   => ['@doctrine.orm.entity_manager', 'getRepository'],
                 'arguments' => [
                     \Mautic\CampaignBundle\Entity\LeadEventLog::class,
+                ],
+            ],
+            'mautic.campaign.repository.summary' => [
+                'class'     => Doctrine\ORM\EntityRepository::class,
+                'factory'   => ['@doctrine.orm.entity_manager', 'getRepository'],
+                'arguments' => [
+                    \Mautic\CampaignBundle\Entity\Summary::class,
                 ],
             ],
         ],
@@ -356,6 +366,7 @@ return [
                     'mautic.tracker.contact',
                     'mautic.campaign.repository.lead_event_log',
                     'mautic.campaign.repository.lead',
+                    'mautic.campaign.model.summary',
                 ],
             ],
             'mautic.campaign.event_collector' => [
@@ -595,5 +606,6 @@ return [
     ],
     'parameters' => [
         'campaign_time_wait_on_event_false' => 'PT1H',
+        'campaign_use_summary'              => 0,
     ],
 ];
