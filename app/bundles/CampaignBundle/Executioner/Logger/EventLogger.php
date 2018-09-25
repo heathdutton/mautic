@@ -107,8 +107,8 @@ class EventLogger
      */
     public function persistLog(LeadEventLog $log)
     {
-        $this->summaryModel->updateSummary([$log]);
         $this->leadEventLogRepository->saveEntity($log);
+        $this->summaryModel->updateSummary([$log]);
     }
 
     /**
@@ -176,8 +176,8 @@ class EventLogger
             return $this;
         }
 
-        $this->summaryModel->updateSummary($collection->getValues());
         $this->leadEventLogRepository->saveEntities($collection->getValues());
+        $this->summaryModel->updateSummary($collection->getValues());
 
         return $this;
     }
@@ -272,7 +272,6 @@ class EventLogger
             return;
         }
 
-        $this->summaryModel->updateSummary($this->persistQueue->getValues());
         $this->leadEventLogRepository->saveEntities($this->persistQueue->getValues());
 
         // Push them into the logs ArrayCollection to be used later.
