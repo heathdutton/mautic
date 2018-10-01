@@ -72,6 +72,7 @@ class EventLogger
      * @param ContactTracker         $contactTracker
      * @param LeadEventLogRepository $leadEventLogRepository
      * @param LeadRepository         $leadRepository
+     * @param SummaryModel           $summaryModel
      */
     public function __construct(
         IpLookupHelper $ipLookupHelper,
