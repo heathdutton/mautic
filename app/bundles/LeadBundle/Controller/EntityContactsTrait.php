@@ -84,7 +84,7 @@ trait EntityContactsTrait
         $repo     = $this->getModel('lead')->getRepository();
         $contacts = $repo->getEntityContacts(
             [
-                'withTotalCount' => true,
+                'withTotalCount' => false,
                 'start'          => $start,
                 'limit'          => $limit,
                 'filter'         => $filter,
