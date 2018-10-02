@@ -30,6 +30,9 @@ trait EntityContactsTrait
      * @param array  $additionalJoins    [ ['type' => 'join|leftJoin', 'from_alias' => '', 'table' => '', 'condition' => ''], ... ]
      * @param string $contactColumnName  Column of the contact in the join table
      * @param string $paginationTarget   DOM seletor for injecting new content when pagination is used
+     * @param null   $orderBy            optional OrderBy column, to be used to increase performance with joins
+     * @param null   $orderByDir         optional $orderBy direction, to be used to increase performance with joins
+     * @param int    $count              optional $count if already known to avoid an extra query
      *
      * @return mixed
      */
@@ -45,7 +48,10 @@ trait EntityContactsTrait
         array $additionalJoins = null,
         $contactColumnName = null,
         array $routeParameters = [],
-        $paginationTarget = null
+        $paginationTarget = null,
+        $orderBy = null,
+        $orderByDir = null,
+        $count = null
     ) {
         if ($permission && !$this->get('mautic.security')->isGranted($permission)) {
             return $this->accessDenied();
@@ -66,8 +72,8 @@ trait EntityContactsTrait
         $this->get('session')->set('mautic.'.$sessionVar.'.contact.filter', $search);
 
         $filter     = ['string' => $search, 'force' => []];
-        $orderBy    = $this->get('session')->get('mautic.'.$sessionVar.'.contact.orderby', 'l.id');
-        $orderByDir = $this->get('session')->get('mautic.'.$sessionVar.'.contact.orderbydir', 'DESC');
+        $orderBy    = $orderBy ? $orderBy : $this->get('session')->get('mautic.'.$sessionVar.'.contact.orderby', 'l.id');
+        $orderByDir = $orderByDir ? $orderByDir : $this->get('session')->get('mautic.'.$sessionVar.'.contact.orderbydir', 'DESC');
 
         //set limits
         $limit = $this->get('session')->get(
@@ -84,7 +90,7 @@ trait EntityContactsTrait
         $repo     = $this->getModel('lead')->getRepository();
         $contacts = $repo->getEntityContacts(
             [
-                'withTotalCount' => false,
+                'withTotalCount' => ($count === null),
                 'start'          => $start,
                 'limit'          => $limit,
                 'filter'         => $filter,
@@ -99,7 +105,16 @@ trait EntityContactsTrait
             $contactColumnName
         );
 
-        $count = $contacts['count'];
+        // Normalize results regarding withTotalCount.
+        if (isset($contacts['count'])) {
+            $count = $contacts['count'];
+        } else {
+            $contacts = [
+                'results' => $contacts,
+                'count'   => $count,
+            ];
+        }
+
         if ($count && $count < ($start + 1)) {
             //the number of entities are now less then the current page so redirect to the last page
             $lastPage = ($count === 1) ? 1 : (ceil($count / $limit)) ?: 1;

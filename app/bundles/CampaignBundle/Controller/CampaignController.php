@@ -99,10 +99,11 @@ class CampaignController extends AbstractStandardFormController
     /**
      * @param     $objectId
      * @param int $page
+     * @param int $count
      *
      * @return JsonResponse|\Symfony\Component\HttpFoundation\RedirectResponse|Response
      */
-    public function contactsAction($objectId, $page = 1)
+    public function contactsAction($objectId, $page = 1, $count = null)
     {
         return $this->generateContactsGrid(
             $objectId,
@@ -112,7 +113,14 @@ class CampaignController extends AbstractStandardFormController
             'campaign_leads',
             null,
             'campaign_id',
-            ['manually_removed' => 0]
+            ['manually_removed' => 0],
+            null,
+            null,
+            [],
+            null,
+            'entity.lead_id',
+            'DESC',
+            $count
         );
     }
 
@@ -723,6 +731,7 @@ class CampaignController extends AbstractStandardFormController
                                 'objectId'   => $entity->getId(),
                                 'page'       => $this->get('session')->get('mautic.campaign.contact.page', 1),
                                 'ignoreAjax' => true,
+                                'count'      => $leadCount,
                             ]
                         )->getContent(),
                     ]
