@@ -676,11 +676,11 @@ class CampaignController extends AbstractStandardFormController
                 if ($this->coreParametersHelper->getParameter('mautic.campaign_use_summary')) {
                     /** @var SummaryRepository $summaryRepo */
                     $summaryRepo       = $this->getDoctrine()->getManager()->getRepository('MauticCampaignBundle:Summary');
-                    $campaignLogCounts = $summaryRepo->getCampaignLogCounts($entity->getId());
+                    $campaignLogCounts = $summaryRepo->getCampaignLogCounts($entity->getId(), $dateFrom, $dateTo);
                 } else {
                     /** @var LeadEventLogRepository $eventLogRepo */
                     $eventLogRepo      = $this->getDoctrine()->getManager()->getRepository('MauticCampaignBundle:LeadEventLog');
-                    $campaignLogCounts = $eventLogRepo->getCampaignLogCounts($entity->getId(), false, false);
+                    $campaignLogCounts = $eventLogRepo->getCampaignLogCounts($entity->getId(), false, false, $dateFrom, $dateTo);
                 }
                 $leadCount         = $this->getCampaignModel()->getRepository()->getCampaignLeadCount($entity->getId(), null, [], $dateFrom, $dateTo);
                 $sortedEvents      = [
