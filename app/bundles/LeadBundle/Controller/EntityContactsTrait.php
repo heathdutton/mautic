@@ -19,20 +19,22 @@ use Mautic\LeadBundle\Entity\LeadRepository;
 trait EntityContactsTrait
 {
     /**
-     * @param        $entityId
-     * @param        $page
-     * @param        $permission
-     * @param        $sessionVar
-     * @param        $entityJoinTable    Table to join to obtain list of related contacts or a DBAL QueryBuilder object defining custom joins
-     * @param null   $dncChannel         Channel for this entity to get do not contact records for
-     * @param null   $entityIdColumnName If the entity ID in $joinTable is not "id", set the column name here
-     * @param array  $contactFilter      Array of additional filters for the getEntityContactsWithFields() function
-     * @param array  $additionalJoins    [ ['type' => 'join|leftJoin', 'from_alias' => '', 'table' => '', 'condition' => ''], ... ]
-     * @param string $contactColumnName  Column of the contact in the join table
-     * @param string $paginationTarget   DOM seletor for injecting new content when pagination is used
-     * @param null   $orderBy            optional OrderBy column, to be used to increase performance with joins
-     * @param null   $orderByDir         optional $orderBy direction, to be used to increase performance with joins
-     * @param int    $count              optional $count if already known to avoid an extra query
+     * @param                $entityId
+     * @param                $page
+     * @param                $permission
+     * @param                $sessionVar
+     * @param                $entityJoinTable    Table to join to obtain list of related contacts or a DBAL QueryBuilder object defining custom joins
+     * @param null           $dncChannel         Channel for this entity to get do not contact records for
+     * @param null           $entityIdColumnName If the entity ID in $joinTable is not "id", set the column name here
+     * @param array          $contactFilter      Array of additional filters for the getEntityContactsWithFields() function
+     * @param array          $additionalJoins    [ ['type' => 'join|leftJoin', 'from_alias' => '', 'table' => '', 'condition' => ''], ... ]
+     * @param string         $contactColumnName  Column of the contact in the join table
+     * @param string         $paginationTarget   DOM seletor for injecting new content when pagination is used
+     * @param null           $orderBy            optional OrderBy column, to be used to increase performance with joins
+     * @param null           $orderByDir         optional $orderBy direction, to be used to increase performance with joins
+     * @param int            $count              optional $count if already known to avoid an extra query
+     * @param \DateTime|null $dateFrom           optionally limit to leads added between From and To dates
+     * @param \DateTime|null $dateTo             optionally limit to leads added between From and To dates
      *
      * @return mixed
      */
@@ -51,7 +53,9 @@ trait EntityContactsTrait
         $paginationTarget = null,
         $orderBy = null,
         $orderByDir = null,
-        $count = null
+        $count = null,
+        \DateTime $dateFrom = null,
+        \DateTime $dateTo = null
     ) {
         if ($permission && !$this->get('mautic.security')->isGranted($permission)) {
             return $this->accessDenied();
@@ -102,7 +106,9 @@ trait EntityContactsTrait
             $contactFilter,
             $entityIdColumnName,
             $additionalJoins,
-            $contactColumnName
+            $contactColumnName,
+            $dateFrom,
+            $dateTo
         );
 
         // Normalize results regarding withTotalCount.

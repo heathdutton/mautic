@@ -227,10 +227,6 @@ class ChartQuery extends AbstractChart
         $limit   = $this->countAmountFromDateRange($this->unit);
         $groupBy = '';
 
-        if (isset($filters['groupBy'])) {
-            $groupBy = ', '.$tablePrefix.'.'.$filters['groupBy'];
-            unset($filters['groupBy']);
-        }
         $dateConstruct = 'DATE_FORMAT('.$tablePrefix.'.'.$column.', \''.$dbUnit.'\')';
 
         if ($isEnumerable === true) {
