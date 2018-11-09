@@ -282,6 +282,14 @@
     line-height: 10px;
 }
 
+.campaign-builder .list-campaign-event .campaign-event-logic {
+    opacity: 0;
+}
+.campaign-builder .list-campaign-event:hover .campaign-event-logic,
+.campaign-builder .list-campaign-source:hover .campaign-event-logic {
+    opacity: 1;
+}
+
 .list-campaign-decision .campaign-event-logic {
     color: #00b49d;
 }

@@ -138,4 +138,14 @@ class AjaxController extends CommonAjaxController
 
         return null;
     }
+
+    /**
+     * @param $campaignId
+     * @param $startDate
+     * @param $endDate
+     */
+    protected function getCampaignEventSummary($campaignId, $startDate, $endDate)
+    {
+        // @todo - Do some magic in here.
+    }
 }

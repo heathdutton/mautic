@@ -18,6 +18,7 @@ if (empty($route)) {
 <?php endif; ?>
     <div class="campaign-event-content">
         <div><span class="campaign-event-name ellipsis"><?php if ('dev' === MAUTIC_ENV):?><small><?php echo $event['id']; ?></small> <?php endif; ?><?php echo $event['name']; ?></span></div>
+        <span class="campaign-event-logic"><?php echo $view['translator']->trans('mautic.campaign.'.$event['type']); ?></span>
     </div>
 <?php if (empty($update)): ?>
     <div class="campaign-event-buttons hide">
