@@ -32,6 +32,7 @@ class SummaryModel extends AbstractCommonModel
      */
     public function updateSummary($logs)
     {
+        return; // Temporary summary stop.
         $summaries = [];
         $now       = new \DateTime();
         foreach ($logs as $log) {
