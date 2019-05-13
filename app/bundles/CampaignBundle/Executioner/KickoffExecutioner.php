@@ -143,6 +143,7 @@ class KickoffExecutioner implements ExecutionerInterface
             if ($this->progressBar) {
                 $this->progressBar->finish();
             }
+            $this->executioner->persistSummaries();
         }
 
         return $this->counter;

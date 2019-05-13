@@ -577,4 +577,14 @@ class EventExecutioner
 
         $this->executeEventsForContacts($children, $contacts, $counter);
     }
+
+    /**
+     * @throws \Doctrine\DBAL\DBALException
+     * @throws \Doctrine\ORM\OptimisticLockException
+     */
+    public function persistSummaries()
+    {
+        $summaryModel = $this->eventLogger->getsummaryModel();
+        $summaryModel->persistSummaries();
+    }
 }
