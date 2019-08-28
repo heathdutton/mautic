@@ -53,7 +53,7 @@ class IpAddress
             ->setCustomRepositoryClass('Mautic\CoreBundle\Entity\IpAddressRepository')
             ->addIndex(['ip_address'], 'ip_search');
 
-        $builder->addId();
+        $builder->addBigIntIdField();
 
         $builder->createField('ipAddress', 'string')
             ->columnName('ip_address')
